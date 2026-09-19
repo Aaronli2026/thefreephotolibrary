@@ -1,4 +1,10 @@
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = (() => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:5000/api';
+  }
+
+  return `${window.location.origin}/api`;
+})();
 
 // 获取 localStorage 中的 token
 function getToken() {
@@ -37,7 +43,8 @@ async function apiCall(endpoint, method = 'GET', body = null, useToken = true) {
 
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, options);
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json() : { error: '服务端未返回 JSON 数据' };
 
     if (!response.ok) {
       throw new Error(data.error || '请求失败');
@@ -78,7 +85,9 @@ async function uploadPhoto(formData) {
     body: formData
   });
 
-  const data = await response.json();
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json') ? await response.json() : { error: '上传接口未返回 JSON 数据' };
+
   if (!response.ok) {
     throw new Error(data.error || '上传失败');
   }
