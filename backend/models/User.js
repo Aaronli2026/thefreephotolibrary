@@ -1,48 +1,16 @@
 const mongoose = require('mongoose');
-const bcryptjs = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-    unique: true,
-    minlength: 3
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    match: /.+\@.+\..+/
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
+  username: { type: String, required: true, unique: true, minlength: 1, maxlength: 30, trim: true },
+  // 保留旧用户字段以兼容已有数据；新用户不再需要邮箱或密码。
+  email: { type: String, unique: true, sparse: true },
+  password: { type: String, select: false },
+  guestId: { type: String, unique: true, sparse: true },
+  isGuest: { type: Boolean, default: true },
   avatar: String,
   bio: String,
-  uploadedPhotos: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Photo'
-  }],
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
+  uploadedPhotos: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Photo' }],
+  createdAt: { type: Date, default: Date.now }
 });
-
-// 密码加密
-userSchema.pre('save', async function(next) {
-  if (this.isModified('password')) {
-    const salt = await bcryptjs.genSalt(10);
-    this.password = await bcryptjs.hash(this.password, salt);
-  }
-  next();
-});
-
-// 验证密码方法
-userSchema.methods.comparePassword = async function(inputPassword) {
-  return await bcryptjs.compare(inputPassword, this.password);
-};
 
 module.exports = mongoose.model('User', userSchema);

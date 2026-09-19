@@ -6,74 +6,41 @@ const verifyToken = require('../middleware/auth');
 
 const router = express.Router();
 
-// 注册
-router.post('/register', [
-  body('username').isLength({ min: 3 }),
-  body('email').isEmail(),
-  body('password').isLength({ min: 6 })
-], async (req, res) => {
+// 无密码注册/登录：用户只需输入���户名。guestId 让同一浏览器可以继续使用原账号。
+router.post('/guest', [body('username').trim().isLength({ min: 1, max: 30 })], async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+  if (!errors.isEmpty()) return res.status(400).json({ error: '请输入 1-30 个字符的用户名' });
 
   try {
-    const { username, email, password } = req.body;
-    
-    // 检查用户是否已存在
-    let user = await User.findOne({ $or: [{ username }, { email }] });
-    if (user) {
-      return res.status(400).json({ error: '用户已存在' });
-    }
+    const username = req.body.username.trim();
+    const guestId = req.body.guestId;
+    let user = guestId ? await User.findOne({ guestId }) : null;
 
-    // 创建新用户
-    user = new User({ username, email, password });
-    await user.save();
-
-    // 生成 JWT token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.status(201).json({ message: '注册成功', token, user: { id: user._id, username, email } });
-  } catch (err) {
-    res.status(500).json({ error: '注册失败', message: err.message });
-  }
-});
-
-// 登录
-router.post('/login', [
-  body('email').isEmail(),
-  body('password').exists()
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    const { email, password } = req.body;
-    
-    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ error: '用户不存在' });
+      user = await User.findOne({ username });
+      if (user && user.guestId && user.guestId !== guestId) {
+        return res.status(409).json({ error: '用户名已被使用，请换一个用户名' });
+      }
     }
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ error: '密码错误' });
+    if (!user) {
+      user = await User.create({ username, guestId, isGuest: true });
+    } else if (user.username !== username) {
+      user.username = username;
+      await user.save();
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.json({ message: '登录成功', token, user: { id: user._id, username: user.username, email } });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    res.json({ message: '创建账号成功', token, user: { id: user._id, username: user.username } });
   } catch (err) {
-    res.status(500).json({ error: '登录失败', message: err.message });
+    res.status(500).json({ error: '创建账号失败', message: err.message });
   }
 });
 
-// 获取当前用户信息
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('uploadedPhotos');
+    if (!user) return res.status(404).json({ error: '用户不存在' });
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: '获取用户信息失败', message: err.message });
